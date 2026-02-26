@@ -1,2 +1,8 @@
+# OS
 .DS_Store
+
+# Text Editor
 .vscode/
+
+# Executables
+build/
