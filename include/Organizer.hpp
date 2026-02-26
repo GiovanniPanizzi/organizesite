@@ -1,4 +1,5 @@
 #include <filesystem>
+#include <queue>
 #include "FileManager.hpp"
 #include <unordered_set>
 #include "DirectoryManager.hpp"
