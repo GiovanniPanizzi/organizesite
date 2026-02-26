@@ -6,5 +6,7 @@ The tool idea is to help organize styles in a static HTML/CSS website. During de
 
 It also separates resources and files into folders, using a standard structure.
 
-## 2. Tecnologies
-The program is written in C++
+## 2. Tech stack
+* **Main Language:** C++
+* **Compilation tool:** CMake 
+* **HTML Parser:** gumbo-parser
