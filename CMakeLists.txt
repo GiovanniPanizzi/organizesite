@@ -23,9 +23,9 @@ file(GLOB APP_SOURCES
 # create executable
 add_executable(organizeSite ${APP_SOURCES})
 
-target_include_directories(organizeSite PRIVATE
+target_include_directories(organizesite PRIVATE
 	include
 )
 
 # link gumbo as a static library
-target_link_libraries(organizeSite PRIVATE gumbo)
+target_link_libraries(organizesite PRIVATE gumbo)
