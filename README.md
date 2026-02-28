@@ -20,4 +20,4 @@ It also separates resources and files into folders, using a standard structure.
 * `make`
 * `sudo mv organizesite /usr/local/bin/`
 
-### When you are done you can call organizesite (with a path if you want) from every repo and it will create the Organized directory, containing every website starting with index.html found recursively in the folder in different directories. 
+### When you are done you can call organizesite (with a path if you want) from every repo and it will create the output directory, containing every website starting with index.html found recursively in the folder in different directories. 
