@@ -120,8 +120,11 @@ std::string findTitle(const GumboNode* node, const std::string& defaultTitle) {
 	return defaultTitle;
 }
 
-void findLocalResourcesLinked(const GumboNode* node, const std::filesystem::path& baseDir, std::vector<std::filesystem::path>& resources) {
+// Find all the local resources linked in the index.html file by looking for the <a>, <link>, <img>, <script>, <source>, <iframe>, <video> and <audio> tags and return their paths in a vector
+void findLocalResourcesLinked(const GumboNode* node, const std::filesystem::path& baseDir, std::vector<std::filesystem::path>& resources){
     if (!node) return;
+
+    static std::unordered_set<std::filesystem::path> seen;
 
     if (node->type == GUMBO_NODE_ELEMENT) {
         const GumboElement& el = node->v.element;
@@ -141,9 +144,10 @@ void findLocalResourcesLinked(const GumboNode* node, const std::filesystem::path
 
             if (isResource && !value.starts_with("http://") && !value.starts_with("https://") && !value.starts_with("//")) {
                 std::filesystem::path fullPath = baseDir / value;
-                if (std::filesystem::exists(fullPath)) {
+
+                if (std::filesystem::exists(fullPath) && seen.insert(fullPath).second) {
                     resources.push_back(fullPath);
-                } else {
+                } else if (!std::filesystem::exists(fullPath)) {
                     std::cout << "Warning: resource not found -> " << fullPath << "\n";
                 }
             }
@@ -156,9 +160,17 @@ void findLocalResourcesLinked(const GumboNode* node, const std::filesystem::path
     }
 }
 
+// Website structure
+struct Website {
+	std::string title;
+	std::filesystem::path indexPath;
+	std::vector<std::filesystem::path> resourcesPaths;
+	GumboOutput* indexDomTree;
+	std::vector<GumboOutput*> htmlFilesDomTrees;
+};
+
 
 /* MAIN */
-
 int main(int argc, char** argv) {
 
 	// Get the current path and if an argument is passed, use that as the path instead
@@ -173,7 +185,6 @@ int main(int argc, char** argv) {
 	DirectoryManager dm;
 	std::vector<std::filesystem::path> indexHtmlFilesPaths = dm.findFilesByName(path, "index.html");
 
-
 	// If no index.html files are found, print a message and exit
 	if(indexHtmlFilesPaths.empty()) {
 		std::cout << "No .html files found in path: " << path << std::endl;
@@ -181,20 +192,24 @@ int main(int argc, char** argv) {
 	}
 	FileManager fm;
 
+	// Create a vector of Website structures and store the paths of the index.html files in it
+	std::vector<Website> websites;
+	websites.resize(indexHtmlFilesPaths.size());
+	for(size_t i = 0; i < indexHtmlFilesPaths.size(); i++) {
+		websites[i].indexPath = indexHtmlFilesPaths[i];
+	}
 
 	// Parse the index.html files using Gumbo and store the outputs in a vector
-	std::vector<GumboOutput*> gumboOutputs;
-	gumboOutputs.resize(indexHtmlFilesPaths.size());
 	for(size_t i = 0; i < indexHtmlFilesPaths.size(); i++) {
 		std::string htmlContent = fm.copyContent(indexHtmlFilesPaths[i]);
-		gumboOutputs[i] = gumbo_parse(htmlContent.c_str());
+		websites[i].indexDomTree = gumbo_parse(htmlContent.c_str());
 	}
 
 
 	// Create a directory called "output" in the current path and if it already exists, print a message and exit
 	if(!dm.createDirectory(path, "output")){
-		for(GumboOutput* output : gumboOutputs) {
-			gumbo_destroy_output(&kGumboDefaultOptions, output);
+		for(Website& website : websites) {
+			gumbo_destroy_output(&kGumboDefaultOptions, website.indexDomTree);
 		}
 		return 1;
 	}
@@ -206,8 +221,9 @@ int main(int argc, char** argv) {
 	// If a directory with the same name already exists, add a suffix to the name until a unique name is found
 	unsigned int websiteCount = 0;
 
-	for (auto& file : gumboOutputs) {
-		std::string baseTitle = findTitle(file->root, "Website" + std::to_string(websiteCount));
+	for (auto& website : websites) {
+		std::string baseTitle = findTitle(website.indexDomTree->root, "Website" + std::to_string(websiteCount));
+		website.title = baseTitle;
 		std::string title = baseTitle;
 
 		std::filesystem::path websiteDir;
@@ -217,12 +233,12 @@ int main(int argc, char** argv) {
 			if (dm.createDirectory(outputPath, title)) break;
 			title = baseTitle + std::to_string(suffix++);
 		}
-		fm.createFile(websiteDir / "index.html", serializeHtmlToString(file->root));
+		fm.createFile(websiteDir / "index.html", serializeHtmlToString(website.indexDomTree->root));
 		websiteCount++;
 	}
 
-	for(GumboOutput* output : gumboOutputs) {
-		gumbo_destroy_output(&kGumboDefaultOptions, output);
+	for(Website& website : websites) {
+		gumbo_destroy_output(&kGumboDefaultOptions, website.indexDomTree);
 	}
 	return 0;
 }
