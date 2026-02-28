@@ -122,48 +122,53 @@ std::string findTitle(const GumboNode* node, const std::string& defaultTitle) {
 }
 
 // Find all the local resources linked in the index.html file by looking for the <a>, <link>, <img>, <script>, <source>, <iframe>, <video> and <audio> tags and return their paths in a vector
-void findLocalResourcesLinked(const GumboNode* node, const std::filesystem::path& baseDir, std::vector<std::filesystem::path>& resources){
-    if (!node) return;
+void findLocalResourcesLinked(
+    const GumboNode* node,
+    const std::filesystem::path& baseDir,
+    std::vector<std::filesystem::path>& resources
+) {
+    if (!node || node->type != GUMBO_NODE_ELEMENT) return;
 
-    static std::unordered_set<std::filesystem::path> seen;
+    const GumboElement& el = node->v.element;
 
-    if (node->type == GUMBO_NODE_ELEMENT) {
-        const GumboElement& el = node->v.element;
+    for (unsigned int i = 0; i < el.attributes.length; i++) {
+        auto* attr = static_cast<GumboAttribute*>(el.attributes.data[i]);
+        std::string name(attr->name);
+        std::string value(attr->value);
 
-        for (unsigned int i = 0; i < el.attributes.length; i++) {
-            auto* attr = static_cast<GumboAttribute*>(el.attributes.data[i]);
-            std::string name(attr->name);
-            std::string value(attr->value);
+        bool isResource = false;
+        if ((el.tag == GUMBO_TAG_A || el.tag == GUMBO_TAG_LINK) && name == "href") isResource = true;
+        else if ((el.tag == GUMBO_TAG_IMG || el.tag == GUMBO_TAG_SCRIPT ||
+                  el.tag == GUMBO_TAG_SOURCE || el.tag == GUMBO_TAG_IFRAME ||
+                  el.tag == GUMBO_TAG_VIDEO || el.tag == GUMBO_TAG_AUDIO) &&
+                 name == "src") isResource = true;
+        else if (el.tag == GUMBO_TAG_VIDEO && name == "poster") isResource = true;
 
-            bool isResource = false;
-            if ((el.tag == GUMBO_TAG_A || el.tag == GUMBO_TAG_LINK) && name == "href") isResource = true;
-            else if ((el.tag == GUMBO_TAG_IMG || el.tag == GUMBO_TAG_SCRIPT ||
-                      el.tag == GUMBO_TAG_SOURCE || el.tag == GUMBO_TAG_IFRAME ||
-                      el.tag == GUMBO_TAG_VIDEO || el.tag == GUMBO_TAG_AUDIO) &&
-                     name == "src") isResource = true;
-            else if (el.tag == GUMBO_TAG_VIDEO && name == "poster") isResource = true;
+        if (isResource && !value.starts_with("http://") &&
+            !value.starts_with("https://") && !value.starts_with("//")) {
 
-            if (isResource && !value.starts_with("http://") && !value.starts_with("https://") && !value.starts_with("//")) {
-                std::filesystem::path fullPath = baseDir / value;
+            try {
+                std::filesystem::path fullPath = std::filesystem::weakly_canonical((baseDir / value).lexically_normal());
 
-                if (std::filesystem::exists(fullPath) && seen.insert(fullPath).second) {
+                if (std::find(resources.begin(), resources.end(), fullPath) == resources.end()) {
                     resources.push_back(fullPath);
-                } else if (!std::filesystem::exists(fullPath)) {
-                    std::cout << "Warning: resource not found -> " << fullPath << "\n";
                 }
+            } catch (std::filesystem::filesystem_error& e) {
+                std::cout << "Warning: cannot resolve resource -> " << baseDir / value << "\n";
             }
         }
+    }
 
-        const GumboVector* children = &el.children;
-        for (unsigned int i = 0; i < children->length; i++) {
-            findLocalResourcesLinked(static_cast<GumboNode*>(children->data[i]), baseDir, resources);
-        }
+    const GumboVector* children = &el.children;
+    for (unsigned int i = 0; i < children->length; i++) {
+        findLocalResourcesLinked(static_cast<GumboNode*>(children->data[i]), baseDir, resources);
     }
 }
 
 // Website structure
 struct Website {
 	std::string title;
+	std::filesystem::path outputDirectory;
 	std::filesystem::path indexPath;
 	std::vector<std::filesystem::path> resourcesPaths;
 	GumboOutput* indexDomTree;
@@ -216,6 +221,36 @@ int main(int argc, char** argv) {
 	}
 	std::filesystem::path outputPath = path / "output";
 
+	// For every index.html file found, find all the local resources linked in it and store their paths in a vector
+	for (auto& website : websites) {
+
+		std::stack<std::filesystem::path> toProcess;
+		std::unordered_set<std::filesystem::path> seen;
+
+		toProcess.push(website.indexPath);
+		seen.insert(website.indexPath);
+
+		while (!toProcess.empty()) {
+			std::filesystem::path currentFile = toProcess.top();
+			toProcess.pop();
+
+			std::string content = fm.copyContent(currentFile);
+			GumboOutput* dom = gumbo_parse(content.c_str());
+
+			website.htmlFilesDomTrees.push_back(dom);
+			std::vector<std::filesystem::path> resources;
+			findLocalResourcesLinked(dom->root, currentFile.parent_path(), resources);
+
+			for (auto& res : resources) {
+				if (seen.insert(res).second) {
+					website.resourcesPaths.push_back(res);
+					if (res.extension() == ".html") {
+						toProcess.push(res);
+					}
+				}
+			}
+		}
+	}
 
 	// For every index.html file found, create a directory with the title of that file and move the file into that directory
 	// If the file is not found, call it Website(n) where n is the number of the website
@@ -234,12 +269,40 @@ int main(int argc, char** argv) {
 			if (dm.createDirectory(outputPath, title)) break;
 			title = baseTitle + std::to_string(suffix++);
 		}
+		website.outputDirectory = websiteDir;
 		fm.createFile(websiteDir / "index.html", serializeHtmlToString(website.indexDomTree->root));
 		websiteCount++;
 	}
 
+	// For every website create a html directory if there are html files linked in the resources and move the html files into that directory
+	for (auto& website : websites) {
+		std::filesystem::path htmlDir = website.outputDirectory / "html";
+		bool hasHtmlFiles = false;
+
+		for (const auto& res : website.resourcesPaths) {
+			if (res.extension() == ".html") {
+				hasHtmlFiles = true;
+				break;
+			}
+		}
+
+		if (hasHtmlFiles) {
+			dm.createDirectory(website.outputDirectory, "html");
+			for (const auto& res : website.resourcesPaths) {
+				if (res.extension() == ".html") {
+					fm.createFile(htmlDir / res.filename(), fm.copyContent(res));
+				}
+			}
+		}
+	}
+
+	// Free the GumboOutput structures and exit
 	for(Website& website : websites) {
 		gumbo_destroy_output(&kGumboDefaultOptions, website.indexDomTree);
+		for (auto* dom : website.htmlFilesDomTrees) {
+			gumbo_destroy_output(&kGumboDefaultOptions, dom);
+		}
 	}
+
 	return 0;
 }

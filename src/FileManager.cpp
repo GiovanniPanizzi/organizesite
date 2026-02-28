@@ -28,4 +28,3 @@ void FileManager::createFile(const std::string& filePath, const std::string& con
     file << content;
     file.close();
 }
-
