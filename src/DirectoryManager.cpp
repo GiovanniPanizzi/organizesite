@@ -7,11 +7,23 @@ DirectoryManager::DirectoryManager() {
 DirectoryManager::~DirectoryManager() {
 }
 
-std::vector<std::filesystem::path> DirectoryManager::findFiles(const std::filesystem::path& path, const std::string& extension) {
+std::vector<std::filesystem::path> DirectoryManager::findFilesByExtention(const std::filesystem::path& path, const std::string& extension) {
 	std::vector<std::filesystem::path> foundFiles;
 	if(std::filesystem::exists(path) && std::filesystem::is_directory(path)) {
 		for(const auto& entry : std::filesystem::recursive_directory_iterator(path)) {
 			if(entry.is_regular_file() && entry.path().extension() == extension) {
+				foundFiles.push_back(entry.path());
+			}
+		}
+	}
+	return foundFiles;
+}
+
+std::vector<std::filesystem::path> DirectoryManager::findFilesByName(const std::filesystem::path& path, const std::string& name) {
+	std::vector<std::filesystem::path> foundFiles;
+	if(std::filesystem::exists(path) && std::filesystem::is_directory(path)) {
+		for(const auto& entry : std::filesystem::recursive_directory_iterator(path)) {
+			if(entry.is_regular_file() && entry.path().filename() == name) {
 				foundFiles.push_back(entry.path());
 			}
 		}
