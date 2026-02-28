@@ -3,6 +3,7 @@
 #include <gumbo.h>
 #include "DirectoryManager.hpp"
 #include "FileManager.hpp"
+#include <unordered_set>
 #include <set>
 
 
