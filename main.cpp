@@ -92,6 +92,35 @@ void printDom(const GumboNode* node, const std::string& prefix = "", bool isLast
 }
 
 
+// Find the title of the website by looking for the <title> tag in the DOM tree and return its content, if not found return the second option passed
+std::string findTitle(const GumboNode* node, const std::string& defaultTitle) {
+	if (!node) return defaultTitle;
+
+	if (node->type == GUMBO_NODE_ELEMENT && node->v.element.tag == GUMBO_TAG_TITLE) {
+		const GumboVector* children = &node->v.element.children;
+		for (unsigned int i = 0; i < children->length; i++) {
+			const GumboNode* child = static_cast<GumboNode*>(children->data[i]);
+			if (child->type == GUMBO_NODE_TEXT) {
+				return child->v.text.text;
+			}
+		}
+	}
+
+	if (node->type == GUMBO_NODE_ELEMENT) {
+		const GumboVector* children = &node->v.element.children;
+		for (unsigned int i = 0; i < children->length; i++) {
+			const GumboNode* child = static_cast<GumboNode*>(children->data[i]);
+			std::string title = findTitle(child, defaultTitle);
+			if (title != defaultTitle) {
+				return title;
+			}
+		}
+	}
+
+	return defaultTitle;
+}
+
+
 /* MAIN */
 
 int main(int argc, char** argv) {
@@ -105,29 +134,59 @@ int main(int argc, char** argv) {
 		std::cerr << "Path does not exist: " << path << std::endl;
 		return 1;
 	}
-
 	DirectoryManager dm;
 	std::vector<std::filesystem::path> indexHtmlFilesPaths = dm.findFilesByName(path, "index.html");
+
 
 	// If no index.html files are found, print a message and exit
 	if(indexHtmlFilesPaths.empty()) {
 		std::cout << "No .html files found in path: " << path << std::endl;
 		return 0;
 	}
-
 	FileManager fm;
 
-	// Create a directory called "output"
-	if(dm.createDirectory(path, "output")){
-		std::filesystem::path outputPath = path / "output";
 
-	} else {
-		return 1;
+	// Parse the index.html files using Gumbo and store the outputs in a vector
+	std::vector<GumboOutput*> gumboOutputs;
+	gumboOutputs.resize(indexHtmlFilesPaths.size());
+	for(size_t i = 0; i < indexHtmlFilesPaths.size(); i++) {
+		std::string htmlContent = fm.copyContent(indexHtmlFilesPaths[i]);
+		gumboOutputs[i] = gumbo_parse(htmlContent.c_str());
 	}
 
 
-	// For every index.html file found, create a directory with the title of that file and move the file into that directory
-	// If the file is not found, call it Website(n) where n is the number of the website (starting from 1)
+	// Create a directory called "output" in the current path and if it already exists, print a message and exit
+	if(!dm.createDirectory(path, "output")){
+		for(GumboOutput* output : gumboOutputs) {
+			gumbo_destroy_output(&kGumboDefaultOptions, output);
+		}
+		return 1;
+	}
+	std::filesystem::path outputPath = path / "output";
 
+
+	// For every index.html file found, create a directory with the title of that file and move the file into that directory
+	// If the file is not found, call it Website(n) where n is the number of the website
+	// If a directory with the same name already exists, add a suffix to the name until a unique name is found
+	unsigned int websiteCount = 0;
+
+	for (auto& file : gumboOutputs) {
+		std::string baseTitle = findTitle(file->root, "Website" + std::to_string(websiteCount));
+		std::string title = baseTitle;
+
+		std::filesystem::path websiteDir;
+		int suffix = 1;
+		while (true) {
+			websiteDir = outputPath / title;
+			if (dm.createDirectory(outputPath, title)) break;
+			title = baseTitle + std::to_string(suffix++);
+		}
+		fm.createFile(websiteDir / "index.html", serializeHtmlToString(file->root));
+		websiteCount++;
+	}
+
+	for(GumboOutput* output : gumboOutputs) {
+		gumbo_destroy_output(&kGumboDefaultOptions, output);
+	}
 	return 0;
 }
