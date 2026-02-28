@@ -1,6 +1,7 @@
 #include <iostream>
 #include <filesystem>
 #include <gumbo.h>
+#include <string>
 
 int main(int argc, char** argv) {
 	std::filesystem::path path = std::filesystem::current_path();
@@ -11,6 +12,12 @@ int main(int argc, char** argv) {
 		std::cerr << "Path does not exist: " << path << std::endl;
 		return 1;
 	}
+
+	std::string html = "<html><body>Ciao</body></html>";
 	
+	GumboOutput* output = gumbo_parse(html.c_str());
+	
+	gumbo_destroy_output(&kGumboDefaultOptions, output);
+
 	return 0;
 }
