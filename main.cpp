@@ -120,6 +120,42 @@ std::string findTitle(const GumboNode* node, const std::string& defaultTitle) {
 	return defaultTitle;
 }
 
+void findLocalResourcesLinked(const GumboNode* node, const std::filesystem::path& baseDir, std::vector<std::filesystem::path>& resources) {
+    if (!node) return;
+
+    if (node->type == GUMBO_NODE_ELEMENT) {
+        const GumboElement& el = node->v.element;
+
+        for (unsigned int i = 0; i < el.attributes.length; i++) {
+            auto* attr = static_cast<GumboAttribute*>(el.attributes.data[i]);
+            std::string name(attr->name);
+            std::string value(attr->value);
+
+            bool isResource = false;
+            if ((el.tag == GUMBO_TAG_A || el.tag == GUMBO_TAG_LINK) && name == "href") isResource = true;
+            else if ((el.tag == GUMBO_TAG_IMG || el.tag == GUMBO_TAG_SCRIPT ||
+                      el.tag == GUMBO_TAG_SOURCE || el.tag == GUMBO_TAG_IFRAME ||
+                      el.tag == GUMBO_TAG_VIDEO || el.tag == GUMBO_TAG_AUDIO) &&
+                     name == "src") isResource = true;
+            else if (el.tag == GUMBO_TAG_VIDEO && name == "poster") isResource = true;
+
+            if (isResource && !value.starts_with("http://") && !value.starts_with("https://") && !value.starts_with("//")) {
+                std::filesystem::path fullPath = baseDir / value;
+                if (std::filesystem::exists(fullPath)) {
+                    resources.push_back(fullPath);
+                } else {
+                    std::cout << "Warning: resource not found -> " << fullPath << "\n";
+                }
+            }
+        }
+
+        const GumboVector* children = &el.children;
+        for (unsigned int i = 0; i < children->length; i++) {
+            findLocalResourcesLinked(static_cast<GumboNode*>(children->data[i]), baseDir, resources);
+        }
+    }
+}
+
 
 /* MAIN */
 
