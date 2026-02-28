@@ -31,12 +31,16 @@ std::vector<std::filesystem::path> DirectoryManager::findFilesByName(const std::
 	return foundFiles;
 }
 
-void DirectoryManager::createDirectory(const std::filesystem::path& path, const std::string& directoryName) {
+// If the directory already exists it return false, otherwise it creates the directory and return true
+bool DirectoryManager::createDirectory(const std::filesystem::path& path, const std::string& directoryName) {
 	std::filesystem::path newDir = path / directoryName;
 	if(!std::filesystem::exists(newDir)) {
 		std::filesystem::create_directory(newDir);
+		std::cout << "Directory created: " << newDir << std::endl;
+		return true;
 	}
 	else{
 		std::cout << "Directory already exists: " << newDir << std::endl;
+		return false;
 	}
 }

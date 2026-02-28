@@ -82,8 +82,7 @@ void printDom(const GumboNode* node, const std::string& prefix = "", bool isLast
                 printDom(child, newPrefix, lastChild);
             }
         }
-    } 
-	else if (node->type == GUMBO_NODE_TEXT) {
+    } else if (node->type == GUMBO_NODE_TEXT) {
         std::string text = node->v.text.text;
 		if (text.find_first_not_of(" \t\n\r") != std::string::npos) {
             std::cout << prefix << (isLast ? "└─" : "├─")
@@ -96,6 +95,8 @@ void printDom(const GumboNode* node, const std::string& prefix = "", bool isLast
 /* MAIN */
 
 int main(int argc, char** argv) {
+
+	// Get the current path and if an argument is passed, use that as the path instead
 	std::filesystem::path path = std::filesystem::current_path();
 	if(argc > 1) {
 		path = path / argv[1];
@@ -106,22 +107,27 @@ int main(int argc, char** argv) {
 	}
 
 	DirectoryManager dm;
-	std::vector<std::filesystem::path> indexHtmlFilesPaths = dm.findFilesByExtention(path, ".html");
+	std::vector<std::filesystem::path> indexHtmlFilesPaths = dm.findFilesByName(path, "index.html");
+
+	// If no index.html files are found, print a message and exit
 	if(indexHtmlFilesPaths.empty()) {
 		std::cout << "No .html files found in path: " << path << std::endl;
 		return 0;
 	}
 
 	FileManager fm;
-	std::string html = fm.copyContent(indexHtmlFilesPaths[0]);
 
-	GumboOutput* output = gumbo_parse(html.c_str());
+	// Create a directory called "output"
+	if(dm.createDirectory(path, "output")){
+		std::filesystem::path outputPath = path / "output";
 
-	std::string serializedHtml = serializeHtmlToString(output->root);
+	} else {
+		return 1;
+	}
 
-	std::cout << "Serialized HTML:\n" << serializedHtml << std::endl;
-	
-	gumbo_destroy_output(&kGumboDefaultOptions, output);
+
+	// For every index.html file found, create a directory with the title of that file and move the file into that directory
+	// If the file is not found, call it Website(n) where n is the number of the website (starting from 1)
 
 	return 0;
 }
